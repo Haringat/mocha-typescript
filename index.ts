@@ -1,21 +1,20 @@
 /// <reference path="typings/globals/es2015-symbol/index.d.ts"/>
 
 interface IOptionallyAsync {
-    (): any;
-    (done: Function): any;
+    (done?: Function): any;
 }
 
 declare var global: {
-    describe(string, IOptionallyAsync): void;
+    describe(name: string, cb: IOptionallyAsync): void;
     it: {
-        (string, IOtinallyAsync): void;
-        skip(string, IOptionallyAsync): void,
-        only(string, IOptionallyAsync): void
+        (name: string, cb: IOptionallyAsync): void;
+        skip(name: string, cb: IOptionallyAsync): void;
+        only(name: string, cb: IOptionallyAsync): void;
     };
-    before(IOptionallyAsync): void,
-    beforeEach(IOptionallyAsync): void,
-    after(IOptionallyAsync): void,
-    afterEach(IOptionallyAsync): void,
+    before(cb: IOptionallyAsync): void;
+    beforeEach(cb: IOptionallyAsync): void;
+    after(cb: IOptionallyAsync): void;
+    afterEach(cb: IOptionallyAsync): void;
     Symbol: Symbol;
 };
 
@@ -70,14 +69,14 @@ export function suite<TFunction extends Function>(target: TFunction | string): C
                         return target.before(done);
                     });
                 } else {
-                    beforeAll(() => {
+                    beforeAll(<IOptionallyAsync> () => {
                         return target.before();
                     });
                 }
             }
             if (target.after) {
                 if (target.after.length > 0) {
-                    afterAll((done) => {
+                    afterAll((done: Function) => {
                         return target.after(done);
                     });
                 } else {
@@ -87,34 +86,26 @@ export function suite<TFunction extends Function>(target: TFunction | string): C
                 }
             }
             let prototype: SuiteProto = target.prototype;
-            let beforeEachFunction: {(): any} | {(done: Function): any} = () => {
-                this[instanceSymbol] = new target;
+            let beforeEachFunction: IOptionallyAsync = () => {
+                instance = new target();
             };
             if (prototype.before) {
                 if (prototype.before.length > 0) {
                     beforeEachFunction = (done: Function) => {
                         instance = new target();
-                        /*let instance = new target;
-                        this[instanceSymbol] = instance;*/
                         return prototype.before.call(instance, done);
                     };
                 } else {
                     beforeEachFunction = () => {
                         instance = new target();
-                        //this[instanceSymbol] = instance;
                         return prototype.before.call(instance);
                     };
-                }
-            } else {
-                beforeEachFunction = () => {
-                    //this[instanceSymbol] = new target;
-                    instance = new target();
                 }
             }
             beforeEach(beforeEachFunction);
 
-            let afterEachFunction: {(): any} | {(done: Function): any} = () => {
-                this[instanceSymbol] = undefined;
+            let afterEachFunction: IOptionallyAsync = () => {
+                instance = undefined;
             };
             if (prototype.after) {
                 if (prototype.after.length > 0) {
@@ -134,6 +125,10 @@ export function suite<TFunction extends Function>(target: TFunction | string): C
             afterEach(afterEachFunction);
 
             for (let key in prototype) {
+                // don't get messed up by inherited methods or some non-function bound to the prototype
+                if (!prototype.hasOwnProperty(key) || !(prototype instanceof Function)) {
+                    continue;
+                }
                 let method = <Function>prototype[key];
                 let testName = method[testNameSymbol];
 
@@ -146,6 +141,7 @@ export function suite<TFunction extends Function>(target: TFunction | string): C
                     if (typeof slowValue === "number") {
                         target.slow(slowValue);
                     }
+                    return target;
                 }
 
                 let shouldSkip = method[skipSymbol];
@@ -157,13 +153,13 @@ export function suite<TFunction extends Function>(target: TFunction | string): C
 
                 if (testName) {
                     if (method.length == 0) {
-                        testFunc(testName, function () {
+                        testFunc(testName, () => {
                             applyTimes(this);
                             //let instance = this[instanceSymbol];
                             return method.apply(instance);
                         });
                     } else if (method.length == 1) {
-                        testFunc(testName, function (done) {
+                        testFunc(testName, (done) => {
                             applyTimes(this);
                             //let instance = this[instanceSymbol];
                             return method.call(instance, done);
